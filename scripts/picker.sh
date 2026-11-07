@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Interactive picker for running Claude agents.
+# Interactive picker for running Claude and Codex agents.
 #
 #   picker.sh           fzf picker; on enter, jumps to the chosen agent.
 #   picker.sh --list    print the rows and refresh the cache (used by fzf's
@@ -10,17 +10,17 @@
 #                       capture <pane> without its trailing blank lines, which
 #                       would otherwise leave fzf's `follow` scrolled onto padding.
 #
-# Rows come from agents.sh, which pairs each running Claude with the tmux pane it
+# Rows come from agents.sh, which pairs each running agent with the tmux pane it
 # occupies. Two kinds of row jump differently:
-#   dedicated  a Claude in a `claude-*` session this plugin launched — resumed in
-#              the popup, over the window it was launched from.
-#   loose      a Claude running in any other pane — focused in place.
+#   dedicated  an agent in a `claude-*` or `codex-*` session this plugin launched —
+#              resumed in the popup, over the window it was launched from.
+#   loose      an agent running in any other pane — focused in place.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=helpers.sh
 . "$DIR/helpers.sh"
 
-cache="${TMPDIR:-/tmp}/tmux-claude-agents-$(id -u).cache"
+cache="${TMPDIR:-/tmp}/tmux-agent-hatch-$(id -u).cache"
 
 if [ "${1:-}" = '--list' ]; then
   tmp="$cache.$$"
@@ -43,49 +43,50 @@ fi
 
 if [ "${1:-}" = '--copy' ]; then
   copy_to_clipboard "${2:-}" &&
-    tmux display-message "tmux-claude-hatch: copied ${2:-}"
+    tmux display-message "tmux-agent-hatch: copied ${2:-}"
   exit 0
 fi
 
-for tool in fzf jq "$(get_tmux_option @claude_command 'claude')"; do
+for tool in fzf jq; do
   command -v "$tool" >/dev/null 2>&1 || {
-    tmux display-message "tmux-claude-hatch: $tool is required for the picker"
+    tmux display-message "tmux-agent-hatch: $tool is required for the picker"
     exit 0
   }
 done
 
 self="$DIR/picker.sh"
 export FZF_DEFAULT_OPTS=''
+export AGENT_PICKER="$self"
 export CLAUDE_PICKER="$self"
 
 # Arbitrary user fzf options (e.g. custom --bind or --preview-window)
 extra_opts=()
-fzf_options="$(get_tmux_option @claude_fzf_options '')"
+fzf_options="$(get_first_tmux_option @agent_fzf_options @claude_fzf_options '')"
 [ -n "$fzf_options" ] && eval "extra_opts=($fzf_options)"
 
 # Load the session list asynchronously. Painting the first frame from the cache
-# can be turned off with @claude_picker_cache, since a cached frame can show a
-# stale status.
+# can be turned off with @agent_picker_cache or @claude_picker_cache.
 list_cmd=("$self" --list)
 sync_opts=()
 now=$(date +%s)
 mtime=$(file_mtime "$cache")
-if [ "$(get_tmux_option @claude_picker_cache 'on')" = on ] &&
+picker_cache="$(get_first_tmux_option @agent_picker_cache @claude_picker_cache 'on')"
+if [ "$picker_cache" = on ] &&
   [ -s "$cache" ] && [ -n "$mtime" ] && [ $((now - mtime)) -lt 3600 ]; then
   list_cmd=(cat "$cache")
   sync_opts=(--bind "load:unbind(load)+reload-sync($self --list)")
 fi
 
-# ctrl-x kills the Claude process itself: a dedicated session dies with its last
+# ctrl-x kills the agent process itself: a dedicated session dies with its last
 # window, while a loose pane keeps the shell that hosted it. The reload waits a
 # beat so the process is gone by the time agents.sh looks for it.
-# ctrl-y copies the agent's location (session:window.pane, e.g. claude-88074b0e:0.0)
+# ctrl-y copies the agent's location (session:window.pane, field 8)
 # and closes the picker.
-sel=$("${list_cmd[@]}" | fzf --ansi --delimiter='\t' --with-nth=5,6,7,8 \
-  --reverse --cycle --header='Claude agents · enter: jump · ctrl-x: kill · ctrl-y: copy' \
+sel=$("${list_cmd[@]}" | fzf --ansi --delimiter='\t' --with-nth=5,6,7,8,9 \
+  --reverse --cycle --header='Agents · enter: jump · ctrl-x: kill · ctrl-y: copy' \
   --preview="$self --preview {2}" --preview-window='up,70%,follow' \
   --bind="ctrl-x:execute-silent(kill {3})+reload(sleep 0.3; $self --list)" \
-  --bind="ctrl-y:execute-silent($self --copy {7})+abort" \
+  --bind="ctrl-y:execute-silent($self --copy {8})+abort" \
   --bind='change:first' \
   ${sync_opts[@]+"${sync_opts[@]}"} \
   ${extra_opts[@]+"${extra_opts[@]}"})
@@ -94,7 +95,7 @@ sel=$("${list_cmd[@]}" | fzf --ansi --delimiter='\t' --with-nth=5,6,7,8 \
 pane=$(printf '%s' "$sel" | cut -f2)
 kind=$(printf '%s' "$sel" | cut -f4)
 
-parent=$(tmux show-options -gqv @claude_parent 2>/dev/null)
+parent=$(get_first_tmux_option @agent_parent @claude_parent '')
 session=$(tmux display-message -p -t "$pane" '#{session_name}' 2>/dev/null)
 
 if [ "$kind" = loose ]; then
@@ -111,10 +112,12 @@ if [ "$kind" = loose ]; then
 fi
 
 # Move the parent client to the window the session was launched from (best-effort),
-# focus the chosen Claude's own window inside that session, then resume it in THIS
+# focus the chosen agent's own window inside that session, then resume it in THIS
 # popup over the top. Falls back to resuming over the current window when
 # origin/parent are unknown.
-origin=$(tmux show-options -qv -t "$session" @claude_origin 2>/dev/null)
+origin=$(tmux show-options -qv -t "$session" @agent_origin 2>/dev/null)
+[ -z "$origin" ] && origin=$(tmux show-options -qv -t "$session" @claude_origin 2>/dev/null)
+
 [ -n "$origin" ] && [ -n "$parent" ] &&
   tmux switch-client -c "$parent" -t "$origin" 2>/dev/null
 

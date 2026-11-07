@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for tmux-claude-hatch.
+# Shared helpers for tmux-agent-hatch.
 
 # get_tmux_option <option-name> <default>
 # Echoes the global tmux option value, or the default when unset/empty.
@@ -11,6 +11,23 @@ get_tmux_option() {
   else
     printf '%s' "$2"
   fi
+}
+
+# get_first_tmux_option <option-name1> <option-name2> <default>
+# Echoes the first set option value, falling back to option-name2, then default.
+get_first_tmux_option() {
+  local value
+  value="$(tmux show-option -gqv "$1" 2>/dev/null)"
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+    return
+  fi
+  value="$(tmux show-option -gqv "$2" 2>/dev/null)"
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+    return
+  fi
+  printf '%s' "$3"
 }
 
 # session_hash <string>
@@ -56,6 +73,32 @@ claude_transcript_mtime() {
       return
     }
   done
+}
+
+# codex_state_dir
+# Absolute path to the per-user directory where codex-hook.sh writes state files.
+codex_state_dir() {
+  local base="${TMPDIR:-/tmp}"
+  printf '%s/tmux-codex-sessions-%d' "${base%/}" "$(id -u)"
+}
+
+# codex_state_load <file>
+# Parses a "key=value" state file written by codex-hook.sh into local variables
+# named cs_<key> in the caller's scope. Clears them first.
+codex_state_load() {
+  cs_status='' cs_cwd='' cs_transcript_path='' cs_tmux_pane='' cs_turn_id='' cs_updated_at=''
+  [ -f "$1" ] || return 1
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+    status=*) cs_status="${line#status=}" ;;
+    cwd=*) cs_cwd="${line#cwd=}" ;;
+    transcript_path=*) cs_transcript_path="${line#transcript_path=}" ;;
+    tmux_pane=*) cs_tmux_pane="${line#tmux_pane=}" ;;
+    turn_id=*) cs_turn_id="${line#turn_id=}" ;;
+    updated_at=*) cs_updated_at="${line#updated_at=}" ;;
+    esac
+  done <"$1"
 }
 
 # copy_to_clipboard <text>

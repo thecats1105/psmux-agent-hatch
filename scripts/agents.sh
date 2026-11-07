@@ -1,27 +1,17 @@
 #!/usr/bin/env bash
-# Emit one picker row per running Claude that lives in a tmux pane.
+# Emit one picker row per running Claude or Codex agent that lives in a tmux pane.
 #
-# Claude self-reports its status: each session writes its own state to disk. We
-# read those files, falling back to `claude agents --json`. So this needs no
-# Claude Code hooks, and no `pane_current_command` scan — on macOS a pane reports
-# its parent shell there, never the `claude` child running inside it.
-#
-# Identity is the Claude process, not the tmux session. Joining pid -> tty -> pane
-# is what lets several Claudes in one project (same cwd, same session, different
-# windows) each get a row of their own.
-#
-#   Row: rank \t pane_id \t pid \t kind \t icon \t age \t loc \t path
+#   Row: rank \t pane_id \t pid \t kind \t tag \t icon \t age \t loc \t path
 #   rank/pane_id/pid/kind are hidden from the display via fzf's --with-nth.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=helpers.sh
 . "$DIR/helpers.sh"
 
+TAB="$(printf '\t')"
+
 # session_recs
-# `procStart` lets render() tell a live agent from a stale file; `statusUpdatedAt`
-# feeds the age column. The files are an internal Claude Code detail, so a missing
-# directory or a file caught mid-write fails this, and the caller asks the CLI.
-#
+# Reads internal Claude Code session state files for high performance.
 #   Rec: pid \t status \t session-id \t cwd \t seen-at \t proc-start
 session_recs() {
   local files
@@ -33,21 +23,20 @@ session_recs() {
 }
 
 # cli_recs
-# Fallback when the session files can't be read. It has already dropped dead
-# agents, so proc-start stays empty. It reports no last-activity time either; the
-# transcript's mtime stands in for it.
+# Fallback when the Claude session files cannot be read.
 cli_recs() {
-  $(get_tmux_option @claude_command 'claude') agents --json 2>/dev/null |
+  local cmd
+  cmd="$(get_tmux_option @claude_command 'claude')"
+  command -v "${cmd%% *}" >/dev/null 2>&1 || return 1
+  $cmd agents --json 2>/dev/null |
     jq -r '.[] | select(.kind == "interactive") | [.pid, .status, .sessionId, .cwd] | @tsv' 2>/dev/null |
-    while IFS=$'\t' read -r pid status sid cwd; do
+    while IFS="$TAB" read -r pid status sid cwd; do
       printf '%s\t%s\t%s\t%s\t%s\t\n' "$pid" "$status" "$sid" "$cwd" "$(claude_transcript_mtime "$sid")"
     done
 }
 
 # proc_starts <recs>
 # Linux only: Claude records field 22 of /proc/<pid>/stat as proc-start there.
-# Strip greedily past ") " first — field 2 is the parenthesised command name and
-# may itself contain ") " — which leaves field 22 as the 20th of what remains.
 proc_starts() {
   printf '%s\n' "$1" | cut -f1 | while IFS= read -r pid; do
     IFS= read -r stat 2>/dev/null <"/proc/$pid/stat" || continue
@@ -57,75 +46,236 @@ proc_starts() {
   done
 }
 
-# render <recs> <verify>
-# Tagged streams into one awk: pid->tty+start, tty->pane, and the agents. One `ps`
-# serves both joins, which matters on macOS where each call costs over 100ms.
-#
-# With <verify> set, the recs came from the session files and liveness is on us —
-# ctrl-x kills the pid on the row. A crashed Claude leaves its file behind and the
-# pid may since have been recycled, so a rec counts only while that pid still has
-# the start time the file recorded: `ps lstart` in UTC, or /proc on Linux. A rec
-# missing a field, or not one pid verified, means the format moved on: fail, so
-# the caller falls back to the CLI.
-render() {
-  {
-    # Rejoining the fields with single spaces undoes the padding of a
-    # single-digit day ("Sep  1").
-    TZ=UTC LC_ALL=C ps -o pid=,tty=,lstart= -p "$(printf '%s\n' "$1" | cut -f1 | paste -sd, -)" 2>/dev/null |
-      awk '{ print "P\t" $1 "\t" $2 "\t" $3 " " $4 " " $5 " " $6 " " $7 }'
-    [ -r /proc/self/stat ] && proc_starts "$1"
-    tmux list-panes -a -F $'T\t#{pane_tty}\t#{pane_id}\t#{session_name}\t#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null
-    printf '%s\n' "$1" | sed $'s/^/A\t/'
-  } | awk -F'\t' -v verify="$2" -v now="$(date +%s)" -v home="$HOME" \
-    -v prefix="$(get_tmux_option @claude_session_prefix 'claude-')" '
-    $1 == "P" { tty_of[$2] = $3; start[$2] = $4; next }
-    $1 == "S" { start[$2] = $3; next }
-    $1 == "T" { sub(/^\/dev\//, "", $2); pane[$2] = $3; sess[$2] = $4; loc[$2] = $5; next }
-    $1 == "A" && $2 != "" {
-      if (verify) {
-        if ($3 == "" || $4 == "" || $5 == "" || $7 == "") { bad = 1; exit }
-        gsub(/ +/, " ", $7)
-        if (start[$2] != $7) next             # stale file: dead, or the pid was recycled
+# codex_recs
+# Reads state files written by codex-hook.sh and verifies them against live tmux panes.
+#   Rec: pane_id \t status \t session-id \t cwd \t updated_at
+codex_recs() {
+  local state_dir cmd expected codex_prefix server_start live_panes f
+  state_dir="$(codex_state_dir)"
+  cmd="$(get_tmux_option @codex_command 'codex')"
+  expected="${cmd%% *}"
+  expected="${expected##*/}"
+  codex_prefix="$(get_tmux_option @codex_session_prefix 'codex-')"
+
+  server_start="$(tmux display-message -p '#{start_time}' 2>/dev/null || true)"
+  live_panes="$(tmux list-panes -a -F "#{pane_id}${TAB}#{session_name}${TAB}#{pane_current_path}${TAB}#{pane_tty}" 2>/dev/null || true)"
+  [ -n "$live_panes" ] || return 0
+
+  local claims=""
+  if [ -d "$state_dir" ]; then
+    for f in "$state_dir"/*; do
+      [ -f "$f" ] || continue
+      codex_state_load "$f" || continue
+
+      # Sweep claims older than server start
+      if [ -n "$server_start" ] && [[ "${cs_updated_at:-0}" =~ ^[0-9]+$ ]]; then
+        if [ "$cs_updated_at" -lt "$server_start" ]; then
+          rm -f "$f" 2>/dev/null
+          continue
+        fi
+      else
+        rm -f "$f" 2>/dev/null
+        continue
+      fi
+
+      # Sweep claims if pane no longer exists
+      if [ -z "$cs_tmux_pane" ] || ! printf '%s\n' "$live_panes" | awk -F"$TAB" -v p="$cs_tmux_pane" '$1 == p { found = 1; exit } END { exit !found }'; then
+        rm -f "$f" 2>/dev/null
+        continue
+      fi
+
+      local id="${f##*/}"
+      claims="${claims}${cs_tmux_pane}${TAB}${cs_updated_at:-0}${TAB}${id}${TAB}${cs_status}${TAB}${cs_cwd}${TAB}${f}
+"
+    done
+  fi
+
+  local sorted=""
+  if [ -n "$claims" ]; then
+    sorted="$(printf '%s' "$claims" | sort -t"$TAB" -k1,1 -k2,2nr)"
+    # Clean up older claims on the same pane
+    printf '%s\n' "$sorted" | awk -F"$TAB" 'NF && seen[$1]++ { print $6 }' |
+      while IFS= read -r old_file; do
+        [ -n "$old_file" ] && rm -f "$old_file" 2>/dev/null
+      done
+  fi
+
+  # Output surviving claims
+  if [ -n "$sorted" ]; then
+    printf '%s\n' "$sorted" | awk -F"$TAB" 'NF && !seen[$1]++ {
+      print $1 "\t" $4 "\t" $3 "\t" $5 "\t" $2
+    }'
+  fi
+
+  # Dedicated fresh codex sessions without a surviving claim yet
+  if [ -n "$sorted" ]; then
+    local claimed_panes
+    claimed_panes="$(printf '%s\n' "$sorted" | awk -F"$TAB" 'NF && !seen[$1]++ { print $1 }')"
+    printf '%s\n' "$live_panes" | awk -F"$TAB" -v prefix="$codex_prefix" -v claimed="$claimed_panes" '
+      BEGIN { split(claimed, c, "\n"); for (i in c) has[c[i]] = 1 }
+      index($2, prefix) == 1 && !( $1 in has ) {
+        print $1 "\t-\t" $2 "\t" $3 "\t0"
       }
-      live++
-
-      tty = tty_of[$2]
-      if (tty == "" || !(tty in pane)) next   # this Claude is not running inside tmux
-
-      if      ($3 == "waiting") { icon = "\033[33m●\033[0m waiting"; rank = 0 }  # yellow - needs input
-      else if ($3 == "idle")    { icon = "\033[32m●\033[0m idle   "; rank = 1 }  # green  - done, your turn
-      else if ($3 == "busy")    { icon = "\033[31m●\033[0m working"; rank = 3 }  # red    - busy, leave it
-      else                      { icon = "\033[90m●\033[0m   ?    "; rank = 2 }  # grey   - unrecognised status
-
-      secs = ($6 != "") ? now - $6 : 1e12   # unknown activity sorts last
-      mins = int(secs / 60)
-      if      ($6 == "")    age = "-"
-      else if (mins < 60)   age = mins "m"
-      else if (mins < 2880) age = int(mins / 60) "h"
-      else                  age = int(mins / 1440) "d"
-      kind = (index(sess[tty], prefix) == 1) ? "dedicated" : "loose"
-
-      path = $5
-      if (index(path, home) == 1) path = "~" substr(path, length(home) + 1)
-
-      printf "%d\t%s\t%s\t%s\t%s\t%s\t%5s\t%s\t%s\n",
-        secs, rank, pane[tty], $2, kind, icon, age, loc[tty], path
-    }
-    END { exit (bad || !live) }
-  ' | sort -t$'\t' $sort_keys | cut -f2-
-  # The age column mixes units ("5m", "3h", "2d"), so the sort runs on a leading
-  # seconds column, cut off once it has served.
+    '
+  else
+    printf '%s\n' "$live_panes" | awk -F"$TAB" -v prefix="$codex_prefix" '
+      index($2, prefix) == 1 {
+        print $1 "\t-\t" $2 "\t" $3 "\t0"
+      }
+    '
+  fi
 }
 
-# status: rank asc (what needs you floats up), then age asc so whatever just went
-# idle sits at the top of its group. recent: age asc alone.
-if [ "$(get_tmux_option @claude_sort 'status')" = recent ]; then
+render() {
+  local claude_recs="$1"
+  local claude_verified="$2"
+  local codex_recs="$3"
+
+  local claude_pids=""
+  if [ -n "$claude_recs" ]; then
+    claude_pids="$(printf '%s\n' "$claude_recs" | cut -f1 | paste -sd, -)"
+  fi
+
+  local claude_cmd codex_cmd claude_base codex_base prefix_claude prefix_codex
+  claude_cmd="$(get_tmux_option @claude_command 'claude')"
+  codex_cmd="$(get_tmux_option @codex_command 'codex')"
+  claude_base="${claude_cmd%% *}" claude_base="${claude_base##*/}"
+  codex_base="${codex_cmd%% *}" codex_base="${codex_base##*/}"
+  prefix_claude="$(get_tmux_option @claude_session_prefix 'claude-')"
+  prefix_codex="$(get_tmux_option @codex_session_prefix 'codex-')"
+
+  {
+    ps -Ao pid=,tty=,comm= 2>/dev/null | awk '{
+      pid = $1; tty = $2
+      sub(/^[[:space:]]*[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+/, "")
+      print "P\t" pid "\t" tty "\t" $0
+    }'
+
+    if [ -n "$claude_pids" ]; then
+      TZ=UTC LC_ALL=C ps -o pid=,lstart= -p "$claude_pids" 2>/dev/null |
+        awk '{ print "L\t" $1 "\t" $2 " " $3 " " $4 " " $5 " " $6 }'
+      [ -r /proc/self/stat ] && proc_starts "$claude_recs"
+    fi
+
+    tmux list-panes -a -F "T${TAB}#{pane_tty}${TAB}#{pane_id}${TAB}#{session_name}${TAB}#{session_name}:#{window_index}.#{pane_index}" 2>/dev/null
+
+    [ -n "$claude_recs" ] && printf '%s\n' "$claude_recs" | sed $'s/^/CLA\t/'
+    [ -n "$codex_recs" ] && printf '%s\n' "$codex_recs" | sed $'s/^/CDX\t/'
+  } | awk -F"$TAB" -v verify="$claude_verified" -v now="$(date +%s)" -v home="$HOME" \
+      -v prefix_claude="$prefix_claude" -v prefix_codex="$prefix_codex" \
+      -v cmd_claude="$claude_base" -v cmd_codex="$codex_base" '
+      $1 == "P" {
+        sub(/^\/dev\//, "", $3)
+        tty_of_pid[$2] = $3
+        base = $4; sub(/.*\//, "", base)
+        if (!(( $3, base ) in pid_on_tty)) pid_on_tty[$3, base] = $2
+        last_pid_on_tty[$3] = $2
+        next
+      }
+      $1 == "L" { start_of_pid[$2] = $3; next }
+      $1 == "S" { start_of_pid[$2] = $3; next }
+      $1 == "T" {
+        sub(/^\/dev\//, "", $2)
+        pane_of_tty[$2] = $3
+        tty_of_pane[$3] = $2
+        sess_of_tty[$2] = $4
+        loc_of_tty[$2] = $5
+        next
+      }
+      $1 == "CLA" && $2 != "" {
+        pid = $2; status = $3; sid = $4; path = $5; seen = $6; proc_start = $7
+        if (verify) {
+          if (status == "" || path == "" || seen == "" || proc_start == "") next
+          gsub(/ +/, " ", proc_start)
+          if (start_of_pid[pid] != proc_start) next
+        }
+        tty = tty_of_pid[pid]
+        if (tty == "" || !(tty in pane_of_tty)) next
+
+        p = pane_of_tty[tty]
+        loc = loc_of_tty[tty]
+        sess = sess_of_tty[tty]
+        kind = (index(sess, prefix_claude) == 1) ? "dedicated" : "loose"
+        tag = "\033[38;5;208mclaude\033[0m"
+
+        if      (status == "waiting") { icon = "\033[33m●\033[0m waiting"; rank = 0 }
+        else if (status == "idle")    { icon = "\033[32m●\033[0m idle   "; rank = 1 }
+        else if (status == "busy")    { icon = "\033[31m●\033[0m working"; rank = 3 }
+        else                          { icon = "\033[90m●\033[0m   ?    "; rank = 2 }
+
+        secs = (seen != "") ? (now - seen) : 1e12
+        if (secs < 0) secs = 0
+        mins = int(secs / 60)
+        if      (seen == "")  age = "-"
+        else if (mins < 60)   age = mins "m"
+        else if (mins < 2880) age = int(mins / 60) "h"
+        else                  age = int(mins / 1440) "d"
+
+        if (index(path, home) == 1) path = "~" substr(path, length(home) + 1)
+
+        printf "%d\t%d\t%s\t%s\t%s\t%s\t%s\t%5s\t%s\t%s\n",
+          secs, rank, p, pid, kind, tag, icon, age, loc, path
+        next
+      }
+      $1 == "CDX" && $2 != "" {
+        p = $2; status = $3; sid = $4; path = $5; seen = $6
+        tty = tty_of_pane[p]
+        if (tty == "") next
+
+        loc = loc_of_tty[tty]
+        sess = sess_of_tty[tty]
+        pid = pid_on_tty[tty, cmd_codex]
+        if (pid == "") pid = last_pid_on_tty[tty]
+        if (pid == "") next
+
+        kind = (index(sess, prefix_codex) == 1) ? "dedicated" : "loose"
+        tag = "\033[36mcodex  \033[0m"
+
+        if      (status == "waiting") { icon = "\033[33m●\033[0m waiting"; rank = 0 }
+        else if (status == "idle")    { icon = "\033[32m●\033[0m idle   "; rank = 1 }
+        else if (status == "busy")    { icon = "\033[31m●\033[0m working"; rank = 3 }
+        else                          { icon = "\033[90m●\033[0m   ?    "; rank = 2 }
+
+        secs = (seen != "" && seen > 0) ? (now - seen) : 1e12
+        if (secs < 0) secs = 0
+        mins = int(secs / 60)
+        if      (seen == "" || seen <= 0) age = "-"
+        else if (mins < 60)   age = mins "m"
+        else if (mins < 2880) age = int(mins / 60) "h"
+        else                  age = int(mins / 1440) "d"
+
+        if (index(path, home) == 1) path = "~" substr(path, length(home) + 1)
+
+        printf "%d\t%d\t%s\t%s\t%s\t%s\t%s\t%5s\t%s\t%s\n",
+          secs, rank, p, pid, kind, tag, icon, age, loc, path
+        next
+      }
+  ' | sort -t"$TAB" $sort_keys | cut -f2-
+}
+
+sort_mode="$(get_first_tmux_option @agent_sort @claude_sort 'status')"
+if [ "$sort_mode" = recent ]; then
   sort_keys='-k1,1n'
 else
   sort_keys='-k2,2n -k1,1n'
 fi
 
-{ recs="$(session_recs)" && out="$(render "$recs" 1)"; } ||
-  { recs="$(cli_recs)" && out="$(render "$recs" '')"; } || exit 0
+# Gather Claude recs
+claude_recs=""
+claude_verified=""
+if claude_recs="$(session_recs 2>/dev/null)" && [ -n "$claude_recs" ]; then
+  claude_verified=1
+elif claude_recs="$(cli_recs 2>/dev/null)"; then
+  claude_verified=""
+fi
+
+# Gather Codex recs
+codex_recs="$(codex_recs 2>/dev/null || true)"
+
+if [ -z "$claude_recs" ] && [ -z "$codex_recs" ]; then
+  exit 0
+fi
+
+out="$(render "$claude_recs" "$claude_verified" "$codex_recs")"
 [ -n "$out" ] && printf '%s\n' "$out"
 exit 0
