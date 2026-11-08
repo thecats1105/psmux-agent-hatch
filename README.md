@@ -1,19 +1,20 @@
 # tmux-agent-hatch
 
-A tmux plugin that runs **Claude Code** and **Codex** sessions in popups for each project directory.
+A tmux plugin that runs **Claude Code**, **Codex**, and **Antigravity CLI (agy)** sessions in popups for each project directory.
 Forked from [`craftzdog/tmux-claude-hatch`](https://github.com/craftzdog/tmux-claude-hatch) and inspired by [`aaronvb/tmux-claude-codex-session-manager`](https://github.com/aaronvb/tmux-claude-codex-session-manager).
 
-Open the hatch, hand an AI agent the work, close it and get back to your editor. Each session lives in its own nested tmux session, so closing the hatch never interrupts it. When you want to check in, an `fzf` picker lists every running session across **both Claude and Codex**, shows what each one is doing, and jumps you straight to it.
+Open the hatch, hand an AI agent the work, close it and get back to your editor. Each session lives in its own nested tmux session, so closing the hatch never interrupts it. When you want to check in, an `fzf` picker lists every running session across **Claude, Codex, and AGY**, shows what each one is doing, and jumps you straight to it.
 
 ## Features
 
-- **Unified picker** (`prefix` + `u`) listing every running Claude and Codex agent — several in one project, and any running loose in ordinary panes.
-- **Provider tags & status indicators** — color-coded tags (`claude` in orange, `codex` in cyan) and live status (`working`, `waiting`, `idle`).
+- **Unified picker** (`prefix` + `u`) listing every running Claude, Codex, and AGY agent — several in one project, and any running loose in ordinary panes.
+- **Provider tags & status indicators** — color-coded tags (`claude` in orange, `codex` in cyan, `agy` in magenta) and live status (`working`, `waiting`, `idle`).
 - **Live preview** of each agent's screen right in the picker.
 - **Smart jump** — selecting an agent switches your client to the window it was launched from, then resumes it in a popup over it.
 - **Independent launchers**:
   - `prefix` + `y` for **Claude Code**
-  - `prefix` + `Y` for **Codex**
+  - `prefix` + `o` for **Codex**
+  - `prefix` + `Y` for **AGY** (Antigravity CLI)
 - **Quick kill** (`ctrl-x`) of a finished agent from the picker.
 - **Copy location** (`ctrl-y`) — puts an agent's `session:window.pane` target on the clipboard.
 - **Bell forwarding** — a bell in a dedicated session highlights the origin window.
@@ -24,7 +25,7 @@ Open the hatch, hand an AI agent the work, close it and get back to your editor.
 - **tmux ≥ 3.2** (for `display-popup`)
 - **[fzf](https://github.com/junegunn/fzf)** — picker UI
 - **[jq](https://jqlang.org/)** — state parsing
-- **Claude Code** and/or **Codex CLI**
+- **Claude Code**, **Codex CLI**, and/or **Antigravity CLI (`agy`)**
 - bash (Linux or macOS)
 
 ## Installation
@@ -66,12 +67,63 @@ Paste the output into `~/.codex/hooks.json`:
 }
 ```
 
+## AGY Setup
+
+Antigravity CLI (`agy`) lifecycle events are tracked via hooks. Wire `agy-hook.sh` into `~/.gemini/config/hooks.json`.
+
+You can automatically generate the required configuration:
+
+```bash
+~/.config/tmux/plugins/tmux-agent-hatch/scripts/agy-hook.sh --print-config
+# or for ~/.tmux/plugins:
+~/.tmux/plugins/tmux-agent-hatch/scripts/agy-hook.sh --print-config
+```
+
+Merge the generated `tmux-agent-hatch` object into `~/.gemini/config/hooks.json`:
+
+```json
+{
+  "tmux-agent-hatch": {
+    "enabled": true,
+    "SessionStart": [
+      { "type": "command", "command": "/path/to/tmux-agent-hatch/scripts/agy-hook.sh idle" }
+    ],
+    "UserPromptSubmit": [
+      { "type": "command", "command": "/path/to/tmux-agent-hatch/scripts/agy-hook.sh working" }
+    ],
+    "PreInvocation": [
+      { "type": "command", "command": "/path/to/tmux-agent-hatch/scripts/agy-hook.sh working" }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "ask_question",
+        "hooks": [
+          { "type": "command", "command": "/path/to/tmux-agent-hatch/scripts/agy-hook.sh waiting" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          { "type": "command", "command": "/path/to/tmux-agent-hatch/scripts/agy-hook.sh working" }
+        ]
+      }
+    ],
+    "Stop": [
+      { "type": "command", "command": "/path/to/tmux-agent-hatch/scripts/agy-hook.sh idle" }
+    ]
+  }
+}
+```
+
 ## Keybindings
 
 | Key | Action |
 | --- | --- |
 | `prefix` + `y` | Launch / attach Claude session for current directory |
-| `prefix` + `Y` | Launch / attach Codex session for current directory |
+| `prefix` + `o` | Launch / attach Codex session for current directory |
+| `prefix` + `Y` | Launch / attach AGY session for current directory |
 | `prefix` + `u` | Open unified Agent session picker popup |
 
 ### Inside the Picker (`prefix` + `u`)
@@ -85,13 +137,14 @@ Paste the output into `~/.codex/hooks.json`:
 
 ## Configuration Options
 
-All options have sensible defaults and support both new `@agent_*` / `@codex_*` naming and legacy `@claude_*` naming.
+All options have sensible defaults and support both new `@agent_*` / `@codex_*` / `@agy_*` naming and legacy `@claude_*` naming.
 
 ### Key Bindings
 
 ```tmux
 set -g @claude_launch_key 'y'
-set -g @codex_launch_key 'Y'
+set -g @codex_launch_key 'o'
+set -g @agy_launch_key 'Y'
 set -g @agent_list_key 'u'     # or @claude_list_key
 ```
 
@@ -102,6 +155,8 @@ set -g @claude_command 'claude'
 set -g @claude_args ''
 set -g @codex_command 'codex'
 set -g @codex_args ''
+set -g @agy_command 'agy'
+set -g @agy_args ''
 ```
 
 ### Sorting & Cache

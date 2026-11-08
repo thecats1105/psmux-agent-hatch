@@ -10,10 +10,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 claude_prefix="$(get_tmux_option @claude_session_prefix 'claude-')"
 codex_prefix="$(get_tmux_option @codex_session_prefix 'codex-')"
+agy_prefix="$(get_tmux_option @agy_session_prefix 'agy-')"
 session="${1:-}"
 
 case "$session" in
-"$claude_prefix"* | "$codex_prefix"*) ;;
+"$claude_prefix"* | "$codex_prefix"* | "$agy_prefix"*) ;;
 *) exit 0 ;;
 esac
 
@@ -24,7 +25,7 @@ origin="$(tmux show-options -qv -t "$session" @agent_origin 2>/dev/null)"
 # Skip if the origin is itself a dedicated session, to avoid a forwarding loop.
 origin_session="$(tmux display-message -p -t "$origin" '#{session_name}' 2>/dev/null)"
 case "$origin_session" in
-"$claude_prefix"* | "$codex_prefix"*) exit 0 ;;
+"$claude_prefix"* | "$codex_prefix"* | "$agy_prefix"*) exit 0 ;;
 esac
 
 tty="$(tmux display-message -p -t "$origin" '#{pane_tty}' 2>/dev/null)"

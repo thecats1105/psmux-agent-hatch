@@ -8,6 +8,10 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 provider="claude"
 case "${1:-}" in
+agy)
+  provider="agy"
+  shift
+  ;;
 codex)
   provider="codex"
   shift
@@ -24,7 +28,12 @@ esac
 path="${1:-$PWD}"
 window="${2:-}"
 
-if [ "$provider" = "codex" ]; then
+if [ "$provider" = "agy" ]; then
+  prefix="$(get_tmux_option @agy_session_prefix 'agy-')"
+  cmd="$(get_tmux_option @agy_command 'agy')"
+  args="$(get_tmux_option @agy_args '')"
+  title=" AGY "
+elif [ "$provider" = "codex" ]; then
   prefix="$(get_tmux_option @codex_session_prefix 'codex-')"
   cmd="$(get_tmux_option @codex_command 'codex')"
   args="$(get_tmux_option @codex_args '')"
@@ -46,8 +55,9 @@ session="${prefix}$(session_hash "$path")"
 current_session="$(tmux display-message -p '#S' 2>/dev/null || true)"
 claude_prefix="$(get_tmux_option @claude_session_prefix 'claude-')"
 codex_prefix="$(get_tmux_option @codex_session_prefix 'codex-')"
+agy_prefix="$(get_tmux_option @agy_session_prefix 'agy-')"
 
-if [[ "$current_session" == "$claude_prefix"* ]] || [[ "$current_session" == "$codex_prefix"* ]]; then
+if [[ "$current_session" == "$claude_prefix"* ]] || [[ "$current_session" == "$codex_prefix"* ]] || [[ "$current_session" == "$agy_prefix"* ]]; then
   tmux display-message '🫪 Popup window already open'
   exit 0
 fi

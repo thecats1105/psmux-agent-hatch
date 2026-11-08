@@ -116,3 +116,29 @@ copy_to_clipboard() {
   done
   tmux set-buffer -w -- "$1" 2>/dev/null
 }
+
+# agy_state_dir
+# Absolute path to the per-user directory where agy-hook.sh writes state files.
+agy_state_dir() {
+  local base="${TMPDIR:-/tmp}"
+  printf '%s/tmux-agy-sessions-%d' "${base%/}" "$(id -u)"
+}
+
+# agy_state_load <file>
+# Parses a "key=value" state file written by agy-hook.sh into local variables
+# named as_<key> in the caller's scope. Clears them first.
+agy_state_load() {
+  as_status='' as_cwd='' as_transcript_path='' as_tmux_pane='' as_conversation_id='' as_updated_at=''
+  [ -f "$1" ] || return 1
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+    status=*) as_status="${line#status=}" ;;
+    cwd=*) as_cwd="${line#cwd=}" ;;
+    transcript_path=*) as_transcript_path="${line#transcript_path=}" ;;
+    tmux_pane=*) as_tmux_pane="${line#tmux_pane=}" ;;
+    conversation_id=*) as_conversation_id="${line#conversation_id=}" ;;
+    updated_at=*) as_updated_at="${line#updated_at=}" ;;
+    esac
+  done <"$1"
+}

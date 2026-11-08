@@ -7,6 +7,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 claude_prefix="$(get_tmux_option @claude_session_prefix 'claude-')"
 codex_prefix="$(get_tmux_option @codex_session_prefix 'codex-')"
+agy_prefix="$(get_tmux_option @agy_session_prefix 'agy-')"
 w="$(get_first_tmux_option @agent_popup_width @claude_popup_width '90%')"
 h="$(get_first_tmux_option @agent_popup_height @claude_popup_height '90%')"
 
@@ -27,7 +28,7 @@ open_picker() {
 }
 
 case "$my_session" in
-"$claude_prefix"* | "$codex_prefix"*)
+"$claude_prefix"* | "$codex_prefix"* | "$agy_prefix"*)
   # Inside a session popup: close it, then reopen the picker on the outer client.
   tmux detach-client -s "$my_session"
   for _ in $(seq 1 100); do
