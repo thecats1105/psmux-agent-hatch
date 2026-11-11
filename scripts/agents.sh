@@ -16,7 +16,7 @@
 #     record the session name and %pane id they ran in.
 #
 # Run it directly, or source it and call agents_main (picker.sh does, saving a bash start).
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 # state_read <file>: parse a key=value hook state file into ST_*.

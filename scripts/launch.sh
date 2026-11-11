@@ -3,7 +3,7 @@
 # directory, shown in a popup.
 #
 #   launch.sh <claude|codex|agy>
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 provider=${1:-claude}

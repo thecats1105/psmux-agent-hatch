@@ -11,7 +11,7 @@
 #   dedicated  an agent in a `claude-*` / `codex-*` / `agy-*` session this plugin
 #              launched — resumed in the popup, over the window it was launched from.
 #   loose      an agent running in any other pane — focused in place.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 . "$_d/agents.sh"
 

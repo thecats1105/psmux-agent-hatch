@@ -3,7 +3,7 @@
 # (which would leave fzf's `follow` scrolled onto padding).
 #
 #   preview.sh <target>
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 target=${1-}

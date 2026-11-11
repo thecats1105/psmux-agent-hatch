@@ -3,7 +3,7 @@
 # psmux-agent-hatch.ps1, which is only there to find Git Bash.
 #
 # Read the @options BEFORE the plugin loads: they are looked at once, here.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 # Keep the log from growing without bound.

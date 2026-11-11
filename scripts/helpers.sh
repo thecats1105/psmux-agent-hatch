@@ -246,27 +246,6 @@ pwsh_script_cmd() {
   done
 }
 
-# hook_command <var> <script> [arg...]: the command line to paste into another tool's
-# hook config (Codex, AGY). Those tools hand it to cmd.exe or PowerShell, and only a
-# command with no quotes in it means the same to both, so spaces are avoided with
-# 8.3 short names. If a path still has a space the quoted form is cmd.exe-only.
-hook_command() {
-  local -n _hook=$1
-  local script=$2 b s a
-  shift 2
-  hatch_bash_exe
-  b=$HATCH_BASH
-  s="$HATCH_SCRIPTS/$script"
-  [[ $b == *' '* ]] && b=$(cygpath -m -s "$b" 2>/dev/null || printf '%s' "$b")
-  [[ $s == *' '* ]] && s=$(cygpath -m -s "$s" 2>/dev/null || printf '%s' "$s")
-  if [[ $b == *' '* || $s == *' '* ]]; then
-    _hook="\"$b\" \"$s\""
-  else
-    _hook="$b $s"
-  fi
-  for a in "$@"; do _hook+=" $a"; done
-}
-
 # cmd_script_cmd <var> <script> [raw-arg...]: the same for fzf, which runs its
 # --preview/--bind commands through cmd.exe. Arguments are passed through raw so
 # fzf's {n} placeholders survive.

@@ -3,7 +3,7 @@
 #
 # Codex has no `claude agents --json` analogue, so status is reconstructed from its
 # lifecycle hooks: wire this one script into all six events in ~/.codex/hooks.json
-# (see --print-config). Each firing rewrites that session's state file with the
+# (scripts/print-hook-config.ps1 codex prints the config). Each firing rewrites that session's state file with the
 # status the event implies; agents.sh reads those files.
 #
 #   SessionStart / Stop                         -> idle
@@ -13,26 +13,8 @@
 # A no-op decision: always exits 0 with no stdout, so it can never block, deny or
 # alter a Codex tool call — including on a malformed payload, an unwritable state
 # dir, or a missing jq.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh" 2>/dev/null || exit 0
-
-# Print the ready-to-paste ~/.codex/hooks.json snippet. Read-only: never touches
-# any config file.
-print_config() {
-  local cmd ev sep=''
-  hook_command cmd codex-hook.sh
-  printf '{\n  "hooks": {\n'
-  for ev in SessionStart UserPromptSubmit PreToolUse PostToolUse PermissionRequest Stop; do
-    printf '%s    "%s": [{ "hooks": [{ "type": "command", "command": "%s" }] }]' "$sep" "$ev" "${cmd//\"/\\\"}"
-    sep=$',\n'
-  done
-  printf '\n  }\n}\n'
-}
-
-if [ "${1-}" = --print-config ]; then
-  print_config
-  exit 0
-fi
 
 main() {
   # Codex outside psmux can never appear in the picker.

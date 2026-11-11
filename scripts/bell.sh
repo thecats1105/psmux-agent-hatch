@@ -6,7 +6,7 @@
 # tmux marks the origin window's bell flag; psmux offers no way to ring another
 # pane, so the equivalent here is a status-line message on the client that
 # launched the session.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 session=${1-}

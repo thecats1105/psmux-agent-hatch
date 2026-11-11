@@ -50,18 +50,18 @@ Use forward slashes in paths inside psmux config. From a config file `run-shell`
 
 Codex lifecycle events are tracked via hooks. Print the configuration and paste it into `~/.codex/hooks.json`:
 
-```bash
-bash /c/path/to/psmux-agent-hatch/scripts/codex-hook.sh --print-config
+```powershell
+pwsh -NoProfile -File C:/path/to/psmux-agent-hatch/scripts/print-hook-config.ps1 codex
 ```
 
-(in Git Bash). It wires `codex-hook.sh` into `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop`.
+It wires `codex-hook.sh` into `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop`.
 
 ## AGY Setup
 
 Print the configuration and merge the generated `psmux-agent-hatch` object into `~/.gemini/config/hooks.json`:
 
-```bash
-bash /c/path/to/psmux-agent-hatch/scripts/agy-hook.sh --print-config
+```powershell
+pwsh -NoProfile -File C:/path/to/psmux-agent-hatch/scripts/print-hook-config.ps1 agy
 ```
 
 ## Claude Companion Plugin (optional)
@@ -73,7 +73,7 @@ Claude reports its own status, so the picker works without hooks. The bundled [`
 /plugin install psmux-claude-hatch@psmux-claude-hatch
 ```
 
-The printed commands avoid quotes (8.3 short names stand in for spaces) so they mean the same to cmd.exe and PowerShell, whichever the agent hands them to.
+The hooks themselves are bash scripts run by Git Bash; only this config printer is PowerShell, since you run it by hand. The printed commands avoid quotes (8.3 short names stand in for spaces) so they mean the same to cmd.exe and PowerShell, whichever the agent hands them to.
 
 ## Keybindings
 
@@ -154,7 +154,7 @@ set -g @agent_forward_bell 'on'
 
 Starting `pwsh` costs ~280 ms; Git Bash starts in ~60 ms. Every key press, popup, hook and fzf preview used to pay that, several times over (the picker started pwsh again to gather its rows). The scripts therefore run in Git Bash, read every option with one `psmux show-options -g`, and the Claude/Codex/AGY hooks no longer start PowerShell at all.
 
-`psmux-agent-hatch.ps1` is the only PowerShell left: psmux loads a plugin through a `.ps1`, so it just finds Git Bash and runs `scripts/setup.sh`. psmux itself still starts one `pwsh` to run each `run-shell` / popup command; that hop cannot be avoided from a plugin.
+PowerShell is left in two places only: `psmux-agent-hatch.ps1` (psmux loads a plugin through a `.ps1`, so it just finds Git Bash and runs `scripts/setup.sh`) and `scripts/print-hook-config.ps1` (prints the Codex/AGY hook config for you to paste). psmux itself still starts one `pwsh` to run each `run-shell` / popup command; that hop cannot be avoided from a plugin.
 
 ## Notes
 

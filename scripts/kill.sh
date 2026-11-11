@@ -7,7 +7,7 @@
 # shell: kill the shell's children (the agent), not the shell — a dedicated session
 # then dies with its last process, and a loose pane keeps its shell. A dedicated
 # session whose pane process has no children runs the agent directly: kill that.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 pid=${1-}
