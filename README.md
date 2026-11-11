@@ -1,6 +1,6 @@
 # psmux-agent-hatch
 
-A [psmux](https://github.com/psmux/psmux) plugin that runs **Claude Code**, **Codex**, and **Antigravity CLI (agy)** sessions in popups for each project directory — a native Windows / PowerShell 7 port of [`thecats1105/tmux-agent-hatch`](https://github.com/thecats1105/tmux-agent-hatch), itself forked from [`craftzdog/tmux-claude-hatch`](https://github.com/craftzdog/tmux-claude-hatch).
+A [psmux](https://github.com/psmux/psmux) plugin that runs **Claude Code**, **Codex**, and **Antigravity CLI (agy)** sessions in popups for each project directory — a native Windows port (scripts run in Git Bash) of [`thecats1105/tmux-agent-hatch`](https://github.com/thecats1105/tmux-agent-hatch), itself forked from [`craftzdog/tmux-claude-hatch`](https://github.com/craftzdog/tmux-claude-hatch).
 
 Open the hatch, hand an AI agent the work, close it and get back to your editor. Each session lives in its own nested psmux session, so closing the hatch never interrupts it. When you want to check in, an `fzf` picker lists every running session across **Claude, Codex, and AGY**, shows what each one is doing, and jumps you straight to it.
 
@@ -17,11 +17,13 @@ Open the hatch, hand an AI agent the work, close it and get back to your editor.
 
 ## Prerequisites
 
-- Windows with **psmux** and **PowerShell 7** (`pwsh`)
+- Windows with **psmux** and **PowerShell 7** (`pwsh`, which psmux itself uses to run commands)
+- **[Git for Windows](https://gitforwindows.org/)** — the scripts run in Git Bash
 - **[fzf](https://github.com/junegunn/fzf)** — picker UI
+- **[jq](https://jqlang.org/)** — parses the agents' JSON (session files, hook payloads)
 - **Claude Code**, **Codex CLI**, and/or **Antigravity CLI (`agy`)**, installed natively on Windows
 
-`jq` is not needed: PowerShell parses the JSON itself.
+Git Bash is found through the registry, `git --exec-path` and the usual install locations (scoop included). Point `@agent_bash` at a `bash.exe` to override. `bash` on `PATH` is deliberately not used: with WSL installed it is the WSL launcher.
 
 ## Installation
 
@@ -48,18 +50,18 @@ Use forward slashes in paths inside psmux config. From a config file `run-shell`
 
 Codex lifecycle events are tracked via hooks. Print the configuration and paste it into `~/.codex/hooks.json`:
 
-```powershell
-pwsh -NoProfile -File C:/path/to/psmux-agent-hatch/scripts/codex-hook.ps1 -PrintConfig
+```bash
+bash /c/path/to/psmux-agent-hatch/scripts/codex-hook.sh --print-config
 ```
 
-It wires `codex-hook.ps1` into `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop`.
+(in Git Bash). It wires `codex-hook.sh` into `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and `Stop`.
 
 ## AGY Setup
 
 Print the configuration and merge the generated `psmux-agent-hatch` object into `~/.gemini/config/hooks.json`:
 
-```powershell
-pwsh -NoProfile -File C:/path/to/psmux-agent-hatch/scripts/agy-hook.ps1 -PrintConfig
+```bash
+bash /c/path/to/psmux-agent-hatch/scripts/agy-hook.sh --print-config
 ```
 
 ## Claude Companion Plugin (optional)
@@ -70,6 +72,8 @@ Claude reports its own status, so the picker works without hooks. The bundled [`
 /plugin marketplace add thecats1105/psmux-agent-hatch
 /plugin install psmux-claude-hatch@psmux-claude-hatch
 ```
+
+The printed commands avoid quotes (8.3 short names stand in for spaces) so they mean the same to cmd.exe and PowerShell, whichever the agent hands them to.
 
 ## Keybindings
 
@@ -123,6 +127,9 @@ set -g @agent_picker_cache 'on'
 set -g @agent_popup_width '90%'
 set -g @agent_popup_height '90%'
 
+# Git Bash to run the scripts with (default: autodetected)
+set -g @agent_bash 'C:/Program Files/Git/usr/bin/bash.exe'
+
 # Extra fzf options (quoted like a command line)
 set -g @agent_fzf_options "--prompt 'nav> ' --bind 'j:down' --bind 'k:up'"
 
@@ -134,23 +141,31 @@ set -g @agent_forward_bell 'on'
 
 ## How it differs from the tmux version
 
-| tmux-agent-hatch                                        | psmux-agent-hatch                                                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| bash, `jq`, `awk`, `ps`                                 | PowerShell 7, `fzf`                                                                                                            |
-| agent → pane via the pane's tty                         | agent → pane by walking the process tree up to `#{pane_pid}` (psmux's `#{pane_tty}` is synthetic)                              |
-| Codex/AGY hooks key on `$TMUX_PANE`                     | hooks key on `$PSMUX_SESSION` + `$TMUX_PANE` — pane ids repeat across psmux sessions, so every target is `session:window.pane` |
-| state in `$TMPDIR` files and tmux options               | `%LOCALAPPDATA%\psmux-agent-hatch` (hook state, origin window, picker cache)                                                   |
-| bell forwarded by writing `\a` to the origin pane's tty | status-line message on the launching client (psmux can't ring another pane)                                                    |
-| `tmux attach` inside a popup                            | `attach.ps1` clears `PSMUX_SESSION` first — psmux refuses to nest attaches otherwise                                           |
+| tmux-agent-hatch                                        | psmux-agent-hatch                                                                                                                                  |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bash on Linux/macOS                                     | bash in Git Bash on Windows, run by psmux through `& '<Git Bash>' '<script>'` (psmux parses its commands as PowerShell)                            |
+| agent → pane via the pane's tty                         | Claude names its own pane in its session file (`tmux` field) and `ps -W` confirms it is alive; Codex/AGY hooks record their pane                    |
+| Codex/AGY hooks key on `$TMUX_PANE`                     | hooks key on `$PSMUX_SESSION` + `$TMUX_PANE` — pane ids repeat across psmux sessions, so every target is `session:window.pane`                     |
+| state in `$TMPDIR` files and tmux options               | `%LOCALAPPDATA%\psmux-agent-hatch` (hook state, origin window, picker cache)                                                                       |
+| bell forwarded by writing `\a` to the origin pane's tty | status-line message on the launching client (psmux can't ring another pane)                                                                        |
+| `tmux attach` inside a popup                            | `attach.sh` clears `PSMUX_SESSION` first — psmux refuses to nest attaches otherwise                                                                |
+
+## Why Git Bash
+
+Starting `pwsh` costs ~280 ms; Git Bash starts in ~60 ms. Every key press, popup, hook and fzf preview used to pay that, several times over (the picker started pwsh again to gather its rows). The scripts therefore run in Git Bash, read every option with one `psmux show-options -g`, and the Claude/Codex/AGY hooks no longer start PowerShell at all.
+
+`psmux-agent-hatch.ps1` is the only PowerShell left: psmux loads a plugin through a `.ps1`, so it just finds Git Bash and runs `scripts/setup.sh`. psmux itself still starts one `pwsh` to run each `run-shell` / popup command; that hop cannot be avoided from a plugin.
 
 ## Notes
 
 - Hook scripts always exit `0` and never print (AGY tool-call hooks answer `{"decision": "allow"}`), so they can never block an agent.
-- Hook state lives under `%LOCALAPPDATA%\psmux-agent-hatch\sessions\<provider>`; stale entries (older than the psmux server, or whose pane is gone) are swept each time the picker lists agents.
+- Hook state lives under `%LOCALAPPDATA%\psmux-agent-hatch\sessions\<provider>` as `key=value` files; entries whose pane is gone, or that predate their session, are swept each time the picker lists agents.
+- Claude agents appear only if their session file has the `tmux` field, which current Claude Code writes when run inside psmux.
 - Popups have no title or border: on psmux 3.4.0 `display-popup -T` / `-b` make psmux silently ignore the popup's command, so they are not used.
 - Failures in popups and bindings are invisible, so launch/attach attempts are logged to `%LOCALAPPDATA%\psmux-agent-hatch\hatch.log`. If an attach fails the popup stays open with the error until you press Enter.
 - Opening a popup for a session that already has one open is refused ("popup window already open"); otherwise a second press would nest another attach inside the first.
-- `ctrl-x` kills the agent process itself: a dedicated session dies with its last process, while a loose pane keeps the shell that hosted it.
+- `ctrl-x` kills the agent process itself: a dedicated session dies with its last process, while a loose pane keeps the shell that hosted it. (Finding a Codex/AGY agent's process takes one WMI query, because Git Bash cannot see the parent of a native Windows process.)
+- The scripts must keep LF line endings (`.gitattributes` enforces it); a CRLF checkout breaks bash.
 
 ## License
 
