@@ -10,7 +10,7 @@
 # A popup closes the instant its command exits, taking any error with it. So the
 # attempt is logged (hatch.log) and, if attach fails or returns immediately, the
 # error is left on screen until Enter is pressed.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 session=${1:-}

@@ -3,7 +3,7 @@
 #
 # AGY passes hook context as JSON on stdin (conversationId, workspacePaths,
 # transcriptPath) but no event name — the status is baked into the command line by
-# the hooks.json wiring (see --print-config):
+# the hooks.json wiring (scripts/print-hook-config.ps1 agy prints it):
 #
 #   agy-hook.sh idle      SessionStart / Stop
 #   agy-hook.sh working   UserPromptSubmit / PreInvocation / PostToolUse
@@ -11,30 +11,8 @@
 #
 # For tool-call payloads AGY expects a JSON decision on stdout; we always answer
 # {"decision": "allow"} so we never block anything. Always exits 0.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh" 2>/dev/null || exit 0
-
-# Print the ready-to-paste ~/.gemini/config/hooks.json snippet (merge the generated
-# psmux-agent-hatch object into that file). Read-only: never touches any config file.
-print_config() {
-  local base
-  hook_command base agy-hook.sh
-  base=${base//\"/\\\"}
-  entry() { printf '{ "type": "command", "command": "%s %s" }' "$base" "$1"; }
-  printf '{\n  "psmux-agent-hatch": {\n    "enabled": true,\n'
-  printf '    "SessionStart": [\n      %s\n    ],\n' "$(entry idle)"
-  printf '    "UserPromptSubmit": [\n      %s\n    ],\n' "$(entry working)"
-  printf '    "PreInvocation": [\n      %s\n    ],\n' "$(entry working)"
-  printf '    "PreToolUse": [\n      { "matcher": "ask_question", "hooks": [ %s ] }\n    ],\n' "$(entry waiting)"
-  printf '    "PostToolUse": [\n      { "matcher": ".*", "hooks": [ %s ] }\n    ],\n' "$(entry working)"
-  printf '    "Stop": [\n      %s\n    ]\n' "$(entry idle)"
-  printf '  }\n}\n'
-}
-
-if [ "${1-}" = --print-config ]; then
-  print_config
-  exit 0
-fi
 
 main() {
   local status=${1-}

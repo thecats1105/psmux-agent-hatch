@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Open the unified agent picker in a popup.
-_d=${BASH_SOURCE[0]%/*}; [ "$_d" = "${BASH_SOURCE[0]}" ] && _d=.
+_s=${BASH_SOURCE[0]//\\//}; _d=${_s%/*}; [ "$_d" = "$_s" ] && _d=.
 . "$_d/helpers.sh"
 
 ctx_load
