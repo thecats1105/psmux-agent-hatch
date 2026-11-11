@@ -11,7 +11,7 @@ popup_size
 open_picker() {
   local cmd
   pwsh_script_cmd cmd picker.sh
-  # No -T/-b: they make psmux 3.4.0 ignore the popup command (see launch.sh).
+  # No -T/-b: they make psmux 3.4.0 ignore the popup command (see launch.sh / psmux#792).
   local popup=(display-popup -E -w "$POPUP_W" -h "$POPUP_H")
   [ -n "$1" ] && popup+=(-c "$1")
   psx "${popup[@]}" "$cmd" >/dev/null

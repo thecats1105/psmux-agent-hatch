@@ -161,7 +161,7 @@ PowerShell is left in two places only: `psmux-agent-hatch.ps1` (psmux loads a pl
 - Hook scripts always exit `0` and never print (AGY tool-call hooks answer `{"decision": "allow"}`), so they can never block an agent.
 - Hook state lives under `%LOCALAPPDATA%\psmux-agent-hatch\sessions\<provider>` as `key=value` files; entries whose pane is gone, or that predate their session, are swept each time the picker lists agents.
 - Claude agents appear only if their session file has the `tmux` field, which current Claude Code writes when run inside psmux.
-- Popups have no title or border: on psmux 3.4.0 `display-popup -T` / `-b` make psmux silently ignore the popup's command, so they are not used.
+- Popups currently have no title or border: on psmux 3.4.0, passing `-T` or `-b` causes `display-popup` to misparse options (treating them as command arguments) and silently ignore the command, so they are not used. This has been resolved upstream in [psmux/psmux#792](https://github.com/psmux/psmux/issues/792), but until a new stable release includes the fix, popup titles and custom borders remain disabled.
 - Failures in popups and bindings are invisible, so launch/attach attempts are logged to `%LOCALAPPDATA%\psmux-agent-hatch\hatch.log`. If an attach fails the popup stays open with the error until you press Enter.
 - Opening a popup for a session that already has one open is refused ("popup window already open"); otherwise a second press would nest another attach inside the first.
 - `ctrl-x` kills the agent process itself: a dedicated session dies with its last process, while a loose pane keeps the shell that hosted it. (Finding a Codex/AGY agent's process takes one WMI query, because Git Bash cannot see the parent of a native Windows process.)

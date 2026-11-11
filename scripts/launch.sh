@@ -58,6 +58,7 @@ hatch_log "launch: popup ${POPUP_W}x${POPUP_H} attach $session (client=$CTX_CLIE
 
 # No -T/-b: on psmux 3.4.0 a title or border option makes display-popup silently
 # ignore its command (the popup opens and closes without running anything).
+# Resolved upstream in https://github.com/psmux/psmux/issues/792, pending stable release.
 popup=(display-popup -E -w "$POPUP_W" -h "$POPUP_H")
 [ -n "$CTX_CLIENT" ] && popup+=(-c "$CTX_CLIENT") # the client that pressed the key
 # Target the LAUNCHING session explicitly. After `new-session` the psmux CLI treats
