@@ -1,12 +1,12 @@
 {
-  "description": "Ring the terminal bell when an agent needs you, and keep the picker's agent cache fresh (psmux).",
+  "description": "Ring the terminal bell when an agent needs you, and keep the picker's agent cache fresh.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.sh\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.sh\""
           }
         ]
       }
@@ -27,11 +27,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/bell.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/bell.sh\""
           },
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.sh\""
           }
         ]
       }
@@ -42,11 +42,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/bell.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/bell.sh\""
           },
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.sh\""
           }
         ]
       }
@@ -57,11 +57,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/bell.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/bell.sh\""
           },
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.ps1\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.sh\""
           }
         ]
       }
@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -File \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.ps1\" 300"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/refresh-cache.sh\" 300"
           }
         ]
       }
