@@ -1,0 +1,9 @@
+{
+  "name": "psmux-claude-hatch",
+  "description": "Companion hooks for psmux-agent-hatch: ring the terminal bell when an agent needs you, and keep the picker's agent cache fresh.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Taejun Park"
+  },
+  "homepage": "https://github.com/thecats1105/psmux-agent-hatch"
+}
